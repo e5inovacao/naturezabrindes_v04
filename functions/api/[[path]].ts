@@ -249,20 +249,41 @@ async function handleProducts(request: Request, supabase: any, pathSegments: str
       } else if (pathSegments[0] === 'highlighted') {
         // GET /api/products/highlighted
         const limit = parseInt(url.searchParams.get('limit') || '6');
-        
-        // Fallback: usar produtos com `featured=true` como "highlighted"
-        const { data, error } = await supabase
-          .from('products')
-          .select('*')
-          .eq('featured', true)
-          .limit(limit);
 
-        if (error) throw error;
+        try {
+          const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('featured', true)
+            .limit(limit);
 
-        return apiResponse({
-          success: true,
-          data: data || [],
-        });
+          if (error) throw error;
+
+          return apiResponse({ success: true, data: data || [] });
+        } catch (primaryError) {
+          console.warn(`[${new Date().toISOString()}] [CLOUDFLARE_API] ⚠️ Fallback highlighted acionado`, {
+            error: primaryError instanceof Error ? primaryError.message : primaryError,
+          });
+
+          // Fallback para tabela ecologic_products_site (sem coluna 'featured')
+          const { data: ecoData, error: ecoError } = await supabase
+            .from('ecologic_products_site')
+            .select('*')
+            .limit(limit);
+
+          if (ecoError) throw ecoError;
+
+          const mapped = (ecoData || []).map((p: any) => ({
+            id: String(p.id ?? p.codigo ?? `${p.tipo || 'eco'}-${p.codigo || Math.random()}`),
+            name: p.titulo || p.nome || 'Produto',
+            description: p.descricao || '',
+            images: [p.img_0, p.IMAGEM].filter(Boolean),
+            category: p.categoria || 'ecologicos',
+            featured: true,
+          }));
+
+          return apiResponse({ success: true, data: mapped });
+        }
       } else if (pathSegments[0] === 'categories' && pathSegments[1] === 'list') {
         // GET /api/products/categories/list
         // Extrair categorias distintas a partir de `category_id`
