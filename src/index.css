@@ -290,3 +290,16 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Cores de dots por seção */
+.bottle-carousel .custom-dots li.slick-active button {
+  background-color: #00AA00 !important;
+}
+
+.thermal-bag-carousel .custom-dots li.slick-active button {
+  background-color: #2563EB !important;
+}
+
+.notebook-carousel .custom-dots li.slick-active button {
+  background-color: #F97316 !important;
+}

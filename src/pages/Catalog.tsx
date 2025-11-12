@@ -575,12 +575,23 @@ export default function Catalog() {
           return hasNecessaireTerm && !productName.includes('porta');
         });
       } else if (selectedCategory.toLowerCase() === 'porta-cartão e carteira') {
-        // Filtro específico para Porta-Cartão e Carteira - buscar termos específicos no título
+        // Filtro específico para Porta-Cartão e Carteira - buscar termos específicos no título (com normalização)
         filtered = filtered.filter(product => {
-          const productName = product.name.toLowerCase();
-          const cartaoTerms = ['porta-cartão', 'porta-cartao', 'carteira', 'documento'];
-          const hasCartaoTerm = cartaoTerms.some(term => productName.includes(term));
-          return hasCartaoTerm; // Não excluir 'porta' para este filtro específico
+          const nameN = product.name
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+          const terms = [
+            'porta-cartao',
+            'porta cartao',
+            'carteira',
+            'documento',
+            'identidade',
+            'porta documento',
+            'porta identidade'
+          ];
+          const hasTerm = terms.some(t => nameN.includes(t));
+          return hasTerm; // Não excluir 'porta' para este filtro específico
         });
       } else if (selectedCategory.toLowerCase() === 'sacochilas') {
         // Filtro específico para Sacochilas - buscar termo específico no título

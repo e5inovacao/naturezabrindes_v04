@@ -241,7 +241,7 @@ const Home: React.FC = () => {
         setState(prev => ({ ...prev, bottleLoading: true, bottleError: null }));
 
         // Consultar múltiplos termos relevantes para ampliar resultados
-        const terms = ['garrafa', 'squeeze', 'térmica', 'inox'];
+        const terms = ['garrafa', 'squeeze'];
         const aggregated: Product[] = [];
 
         for (const term of terms) {
@@ -261,9 +261,9 @@ const Home: React.FC = () => {
         // Aplicar filtro de relevância e usar seu tamanho para renderização
         const filtered = aggregated.filter(product => {
           const productName = product.name?.toLowerCase() || '';
-          const includeTerms = ['garrafa', 'squeeze', 'térmica', 'inox', 'vacuum', 'vácuo'];
+          const includeTerms = ['garrafa', 'squeeze'];
           const hasIncludeTerm = includeTerms.some(term => productName.includes(term));
-          const excludeTerms = ['porta', 'abridor de garrafa', 'garrafa bebedouro'];
+          const excludeTerms = ['porta', 'porta-garrafa', 'abridor', 'abridor de garrafa', 'garrafa bebedouro', 'bolsa', 'mochila', 'canivete', 'estojo', 'case', 'suporte'];
           const hasExcludeTerm = excludeTerms.some(term => productName.includes(term));
           return hasIncludeTerm && !hasExcludeTerm;
         });
@@ -329,7 +329,7 @@ const Home: React.FC = () => {
         setState(prev => ({ ...prev, thermalBagLoading: true, thermalBagError: null }));
 
         // Buscar nécessaire (com e sem acento) e variações comuns
-        const terms = ['nécessaire', 'necessaire', 'estojo', 'necessária'];
+        const terms = ['nécessaire', 'necessaire'];
         const aggregated: Product[] = [];
         for (const term of terms) {
           try {
@@ -344,10 +344,14 @@ const Home: React.FC = () => {
           }
         }
 
-        setState(prev => ({ 
-          ...prev, 
-          thermalBagProducts: aggregated, 
-          thermalBagLoading: false 
+        const filtered = aggregated.filter(p => {
+          const n = (p.name || '').toLowerCase();
+          return (n.includes('nécessaire') || n.includes('necessaire')) && !n.includes('porta');
+        });
+        setState(prev => ({
+          ...prev,
+          thermalBagProducts: filtered,
+          thermalBagLoading: false
         }));
       } catch (error) {
         console.error(`[${new Date().toISOString()}] [HOME] ❌ Erro ao carregar produtos de nécessaires:`, {
