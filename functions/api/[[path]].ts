@@ -393,59 +393,67 @@ async function handleProducts(request: Request, supabase: any, pathSegments: str
         // GET /api/products/:id
         const productId = pathSegments[0];
         
+        // Normalizar possíveis formatos de ID
+        const idStr = String(productId);
+        let code = idStr
+          .replace(/^ecologic[-_]/, '')
+          .replace(/^eco[-_]/, '');
+        const isNumeric = /^\d+$/.test(code);
+        const numericCode = isNumeric ? parseInt(code, 10) : null;
+
+        // Tentar primeiro na tabela principal (se existir)
         try {
           const { data, error } = await supabase
             .from('products')
             .select('*')
-            .eq('id', productId)
-            .single();
-
+            .eq('id', idStr)
+            .maybeSingle();
           if (error) throw error;
+          if (data) return apiResponse({ success: true, data });
+        } catch (e) {
+          // seguir para fallback eco
+        }
 
-          return apiResponse({ success: true, data });
-        } catch (primaryError) {
-          console.warn(`[${new Date().toISOString()}] [CLOUDFLARE_API] ⚠️ Fallback produto por ID acionado`, {
-            error: primaryError instanceof Error ? primaryError.message : primaryError,
-          });
-          // Tentar localizar por 'id'; se não achar, tentar por 'codigo'
+        // Fallback: ecologic_products_site por codigo e por id numérico
+        try {
           let ecoData: any = null;
-          let ecoError: any = null;
-          try {
-            const res = await supabase
+
+          // Buscar por código
+          const byCodigo = await supabase
+            .from('ecologic_products_site')
+            .select('*')
+            .eq('codigo', code)
+            .maybeSingle();
+          ecoData = byCodigo.data;
+
+          // Se não achou e é numérico, tentar por id
+          if (!ecoData && numericCode !== null) {
+            const byId = await supabase
               .from('ecologic_products_site')
               .select('*')
-              .eq('id', productId)
+              .eq('id', numericCode)
               .maybeSingle();
-            ecoData = res.data; ecoError = res.error;
-          } catch (e) {
-            ecoError = e;
+            ecoData = byId.data;
+          }
+
+          // Fallback adicional: tentar por título contendo o código
+          if (!ecoData && code && code.length > 0) {
+            const byTitle = await supabase
+              .from('ecologic_products_site')
+              .select('*')
+              .ilike('titulo', `%${code}%`)
+              .limit(1);
+            ecoData = Array.isArray(byTitle.data) ? byTitle.data[0] : null;
           }
 
           if (!ecoData) {
-            // Caso IDs venham como 'eco-<codigo>' ou o frontend use 'codigo'
-            const codigo = productId.startsWith('eco-') ? productId.replace('eco-', '') : productId;
-            try {
-              const res2 = await supabase
-                .from('ecologic_products_site')
-                .select('*')
-                .eq('codigo', codigo)
-                .maybeSingle();
-              ecoData = res2.data; ecoError = ecoError || res2.error;
-            } catch (e2) {
-              ecoError = ecoError || e2;
-            }
+            return apiResponse({ success: true, data: null }, 404);
           }
-          if (ecoError) throw ecoError;
-          const mapped = ecoData
-            ? {
-                id: String(ecoData.id ?? ecoData.codigo ?? `${ecoData.tipo || 'eco'}-${ecoData.codigo || Math.random()}`),
-                name: ecoData.titulo || ecoData.nome || 'Produto',
-                description: ecoData.descricao || '',
-                images: [ecoData.img_0, ecoData.IMAGEM].filter(Boolean),
-                category: ecoData.categoria || 'ecologicos',
-              }
-            : null;
+
+          const mapped = mapEcologicToProduct(ecoData);
           return apiResponse({ success: true, data: mapped });
+        } catch (fallbackError) {
+          return errorResponse('Erro ao buscar produto', 500);
         }
       }
     }
