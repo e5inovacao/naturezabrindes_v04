@@ -217,7 +217,8 @@ async function handleProducts(request: Request, supabase: any, pathSegments: str
 
         const { data: ecoData, error: ecoError } = await supabase
           .from('ecologic_products_site')
-          .select('*');
+          .select('*')
+          .eq('status_active', true);
 
         if (ecoError) {
           return apiResponse({ success: false, error: 'Erro ao buscar produtos ecológicos' }, 500);
@@ -348,10 +349,11 @@ async function handleProducts(request: Request, supabase: any, pathSegments: str
           const { data, error } = await supabase
             .from('produtos_destaque')
             .select(`*, ecologic_products_site!produtos_destaque_id_produto_fkey(*)`)
+            .eq('ecologic_products_site.status_active', true)
             .limit(limit);
           if (error) throw error;
           const mapped = (data || [])
-            .map((item: any) => item?.ecologic_products_site ? mapEcologicToProduct(item.ecologic_products_site) : null)
+            .map((item: any) => item?.ecologic_products_site && item.ecologic_products_site.status_active !== false ? mapEcologicToProduct(item.ecologic_products_site) : null)
             .filter(Boolean);
           return apiResponse({ success: true, data: mapped });
         } catch (err) {

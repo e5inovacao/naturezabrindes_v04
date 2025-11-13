@@ -180,6 +180,7 @@ router.get('/highlighted', async (req: Request, res: Response) => {
         *,
         ecologic_products_site!produtos_destaque_id_produto_fkey(*)
       `)
+      .eq('ecologic_products_site.status_active', true)
       .limit(limitNum);
 
     if (error) {
@@ -231,7 +232,8 @@ router.get('/', async (req: Request, res: Response) => {
     console.log('[DEBUG] Iniciando consulta à tabela ecologic_products_site...');
     const { data: ecologicProducts, error } = await supabaseAdmin
       .from('ecologic_products_site')
-      .select('*');
+      .select('*')
+      .eq('status_active', true);
     
     console.log('[DEBUG] Consulta concluída. Dados:', {
       hasData: !!ecologicProducts,
