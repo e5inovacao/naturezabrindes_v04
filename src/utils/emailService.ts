@@ -22,7 +22,8 @@ interface BrevoEmailRequest {
   htmlContent: string;
 }
 
-const BACKEND_EMAIL_URL = '/api/email';
+const BREVO_API_KEY = import.meta.env.VITE_BREVO_API_KEY || '';
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 
 export const sendQuoteConfirmationEmail = async (emailData: EmailData): Promise<boolean> => {
   try {
@@ -42,19 +43,28 @@ export const sendQuoteConfirmationEmail = async (emailData: EmailData): Promise<
     }
     
     const emailTemplate = generateQuoteEmailTemplate(emailData);
+    
+    const emailRequest: BrevoEmailRequest = {
+      sender: {
+        name: 'Natureza Brindes',
+        email: 'naturezabrindes@naturezabrindes.com.br'
+      },
+      to: [{
+        email: clientEmail,
+        name: clientName
+      }],
+      subject: 'Confirmação de Solicitação de Orçamento - Natureza Brindes',
+      htmlContent: emailTemplate
+    };
 
-    const response = await fetch(`${BACKEND_EMAIL_URL}/quote-confirmation`, {
+    const response = await fetch(BREVO_API_URL, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'api-key': BREVO_API_KEY
       },
-      body: JSON.stringify({
-        clientName,
-        clientEmail,
-        subject: 'Confirmação de Solicitação de Orçamento - Natureza Brindes',
-        htmlContent: emailTemplate
-      })
+      body: JSON.stringify(emailRequest)
     });
 
     if (!response.ok) {
@@ -89,19 +99,28 @@ export const sendConfirmationEmail = async (emailData: EmailData): Promise<boole
     }
     
     const emailTemplate = generateEmailTemplate(emailData);
+    
+    const emailRequest: BrevoEmailRequest = {
+      sender: {
+        name: 'Natureza Brindes',
+        email: 'naturezabrindes@naturezabrindes.com.br'
+      },
+      to: [{
+        email: clientEmail,
+        name: clientName
+      }],
+      subject: 'RECEBEMOS SUA SOLICITAÇÃO DE ORÇAMENTO - Natureza Brindes',
+      htmlContent: emailTemplate
+    };
 
-    const response = await fetch(`${BACKEND_EMAIL_URL}/confirmation`, {
+    const response = await fetch(BREVO_API_URL, {
       method: 'POST',
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'api-key': BREVO_API_KEY
       },
-      body: JSON.stringify({
-        clientName,
-        clientEmail,
-        subject: 'RECEBEMOS SUA SOLICITAÇÃO DE ORÇAMENTO - Natureza Brindes',
-        htmlContent: emailTemplate
-      })
+      body: JSON.stringify(emailRequest)
     });
 
     if (!response.ok) {

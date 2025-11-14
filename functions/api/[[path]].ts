@@ -468,13 +468,14 @@ async function handleProducts(request: Request, supabase: any, pathSegments: str
 }
 
 // Quotes API handlers
-async function handleQuotes(request: Request, supabase: any, pathSegments: string[]) {
+async function handleQuotes(request: Request, supabase: any, pathSegments: string[], env: any) {
   const method = request.method;
 
   try {
     if (method === 'POST' && pathSegments.length === 0) {
       // POST /api/quotes - Create new quote
       const body = await request.json();
+      const apiKey = env?.VITE_BREVO_API_KEY || env?.BREVO_API_KEY;
       
       const { data, error } = await supabase
         .from('orcamentos')
@@ -489,6 +490,57 @@ async function handleQuotes(request: Request, supabase: any, pathSegments: strin
         .single();
 
       if (error) throw error;
+
+      try {
+        if (apiKey && body?.customerData?.email) {
+          let outboxId: number | null = null;
+          try {
+            const ins = await supabase
+              .from('email_outbox')
+              .insert({
+                recipient: body.customerData.email,
+                subject: 'RECEBEMOS SUA SOLICITAÇÃO DE ORÇAMENTO - Natureza Brindes',
+                template: 'quote_confirmation',
+                payload: { customerData: body.customerData },
+                status: 'queued',
+              })
+              .select('id')
+              .single();
+            outboxId = ins.data?.id || null;
+          } catch {}
+
+          const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'api-key': apiKey,
+            },
+            body: JSON.stringify({
+              sender: { name: 'Natureza Brindes', email: 'naturezabrindes@naturezabrindes.com.br' },
+              to: [{ email: body.customerData.email, name: body.customerData.name }],
+              subject: 'RECEBEMOS SUA SOLICITAÇÃO DE ORÇAMENTO - Natureza Brindes',
+              htmlContent: `<div style="font-family:Arial,sans-serif"><h2>Recebemos sua solicitação</h2><p>Olá <b>${body.customerData.name}</b>, em breve retornaremos.</p><p style="font-size:12px;color:#666;">WhatsApp: (27) 99958-6250 | E-mail: naturezabrindes@naturezabrindes.com.br</p></div>`,
+              textContent: `Olá ${body.customerData.name},\n\nRecebemos sua solicitação de orçamento e nossa equipe já está preparando a melhor proposta.\n\nSeus dados:\n- E-mail: ${body.customerData.email}\n- Telefone: ${body.customerData.phone || 'Não informado'}\n- Empresa: ${body.customerData.company || 'Não informado'}\n\nAtenciosamente,\nEquipe Natureza Brindes`,
+              replyTo: { email: 'naturezabrindes@naturezabrindes.com.br', name: 'Natureza Brindes' },
+              tags: ['quote_confirmation']
+            }),
+          });
+          const text = await resp.text().catch(() => '');
+          try {
+            if (outboxId) {
+              await supabase
+                .from('email_outbox')
+                .update({ status: resp.ok ? 'sent' : 'error', provider_response: { text }, updated_at: new Date().toISOString() })
+                .eq('id', outboxId);
+            }
+          } catch {}
+        } else {
+          console.warn('[CLOUDFLARE_API] API key Brevo ausente ou email do cliente não informado');
+        }
+      } catch (e) {
+        console.warn('[CLOUDFLARE_API] Erro ao enviar e-mail de confirmação:', e instanceof Error ? e.message : String(e));
+      }
 
       return apiResponse({
         success: true,
@@ -530,7 +582,7 @@ async function handleQuotes(request: Request, supabase: any, pathSegments: strin
             },
           },
         });
-      } else if (pathSegments[0] === 'stats' && pathSegments[1] === 'dashboard') {
+    } else if (pathSegments[0] === 'stats' && pathSegments[1] === 'dashboard') {
         // GET /api/quotes/stats/dashboard
         const { data, error } = await supabase
           .from('orcamentos')
@@ -632,7 +684,7 @@ export async function onRequest(context: any) {
     } else if (pathSegments[0] === 'products') {
       response = await handleProducts(request, supabase, pathSegments.slice(1));
     } else if (pathSegments[0] === 'quotes') {
-      response = await handleQuotes(request, supabase, pathSegments.slice(1));
+      response = await handleQuotes(request, supabase, pathSegments.slice(1), env);
     } else if (pathSegments[0] === 'proxy') {
       response = await handleProxy(request, pathSegments.slice(1));
     } else {

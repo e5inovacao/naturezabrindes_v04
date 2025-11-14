@@ -119,7 +119,7 @@ async function createQuoteRequest(customerData: any, items: any[], notes?: strin
   }
   
   console.log(`[${new Date().toISOString()}] [QUOTES] ✅ Itens criados:`, itens.length);
-  
+
   return solicitacao;
 }
 
@@ -168,6 +168,9 @@ router.post('/v2', async (req: Request, res: Response) => {
       id: result.solicitacao_id,
       numero: result.numero_solicitacao
     });
+
+    // Enviar e-mail de confirmação
+    await sendBrevoConfirmationEmail(customerData);
 
     return res.status(201).json({
       success: true,
@@ -420,6 +423,9 @@ router.post('/', async (req: Request, res: Response) => {
       .single();
 
     const newQuote = mapSupabaseToQuoteRequest(fullQuoteData, fullItemsData || [], clienteData);
+
+    // Enviar e-mail de confirmação
+    await sendBrevoConfirmationEmail(customerData);
 
     res.status(201).json({
       success: true,
@@ -756,3 +762,93 @@ router.get('/stats/dashboard', async (req: Request, res: Response) => {
 });
 
 export default router;
+import { generateConfirmationEmailHTML } from '../utils/emailTemplates.ts';
+
+// Serviço de envio de e-mail via Brevo (server-side)
+async function sendBrevoConfirmationEmail(customerData: any, options: { subject?: string; message?: string } = {}) {
+  try {
+    const apiKey = process.env.VITE_BREVO_API_KEY || process.env.BREVO_API_KEY;
+    if (!apiKey) {
+      console.warn('[QUOTES] BREVO API key ausente no ambiente');
+      return false;
+    }
+
+    const sender = {
+      name: 'Natureza Brindes',
+      email: 'naturezabrindes@naturezabrindes.com.br'
+    };
+
+    const htmlContent = generateConfirmationEmailHTML({
+      clientName: customerData.name,
+      clientEmail: customerData.email,
+      clientPhone: customerData.phone,
+      clientCompany: customerData.company,
+      subject: options.subject,
+      message: options.message,
+    });
+
+    const payload = {
+      sender,
+      to: [{ email: customerData.email, name: customerData.name }],
+      subject: options.subject || 'RECEBEMOS SUA SOLICITAÇÃO DE ORÇAMENTO - Natureza Brindes',
+      htmlContent,
+      textContent: `Olá ${customerData.name},\n\nRecebemos sua solicitação de orçamento e nossa equipe já está preparando a melhor proposta.\n\nSeus dados:\n- E-mail: ${customerData.email}\n- Telefone: ${customerData.phone || 'Não informado'}\n- Empresa: ${customerData.company || 'Não informado'}\n\nAtenciosamente,\nEquipe Natureza Brindes`,
+      replyTo: { email: 'naturezabrindes@naturezabrindes.com.br', name: 'Natureza Brindes' },
+      tags: ['quote_confirmation']
+    };
+
+    let outboxId: number | null = null;
+    try {
+      const ins = await supabaseAdmin
+        .from('email_outbox')
+        .insert({
+          recipient: customerData.email,
+          subject: options.subject || 'RECEBEMOS SUA SOLICITAÇÃO DE ORÇAMENTO - Natureza Brindes',
+          template: 'quote_confirmation',
+          payload: { customerData, message: options.message },
+          status: 'queued',
+        })
+        .select('id')
+        .single();
+      outboxId = ins.data?.id || null;
+    } catch (logErr) {}
+
+    const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'api-key': apiKey
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => '');
+      try {
+        if (outboxId) {
+          await supabaseAdmin
+            .from('email_outbox')
+            .update({ status: 'error', provider_response: { text: txt }, updated_at: new Date().toISOString() })
+            .eq('id', outboxId);
+        }
+      } catch {}
+      console.error('[QUOTES] Falha ao enviar e-mail (Brevo):', txt);
+      return false;
+    }
+    try {
+      const okText = await resp.text().catch(() => '');
+      if (outboxId) {
+        await supabaseAdmin
+          .from('email_outbox')
+          .update({ status: 'sent', provider_response: { text: okText }, updated_at: new Date().toISOString() })
+          .eq('id', outboxId);
+      }
+    } catch {}
+    console.log('[QUOTES] E-mail de confirmação enviado com sucesso');
+    return true;
+  } catch (e) {
+    console.error('[QUOTES] Erro no envio de e-mail (Brevo):', e instanceof Error ? e.message : String(e));
+    return false;
+  }
+}
